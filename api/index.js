@@ -62,12 +62,24 @@ export default async function handler(req, res) {
         body: c.source?.body,
         author: c.source?.author?.name
       },
-      parts: (c.conversation_parts?.conversation_parts || []).map(p => ({
-        type: p.part_type,
-        author: p.author?.name,
-        body: p.body,
-        created_at: p.created_at
-      }))
+      parts: (c.conversation_parts?.conversation_parts || [])
+  .filter(p => {
+    // On garde uniquement les parts avec un body utile
+    if (!p.body || p.body.trim() === "") return false;
+    if (p.redacted === true) return false;
+    // Filtre les messages supprimés (FR + EN, avec ou sans HTML)
+    const cleanBody = p.body.replace(/<[^>]*>/g, "").trim().toLowerCase();
+    if (cleanBody.includes("ce message a été supprimé")) return false;
+    if (cleanBody.includes("this note was deleted")) return false;
+    if (cleanBody.includes("this message was deleted")) return false;
+    return true;
+  })
+  .map(p => ({
+    type: p.part_type,
+    author: p.author?.name,
+    body: p.body,
+    created_at: p.created_at
+  }))
     }));
 
     // 4. Envoie à Make
