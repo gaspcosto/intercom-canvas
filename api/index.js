@@ -9,7 +9,7 @@ export default async function handler(req, res) {
           components: [{
             type: "button",
             id: "generate_button",
-            label: "Générer le mail de suivi",
+            label: "Reco prochaine action",
             style: "primary",
             action: { type: "submit" }
           }]
