@@ -112,7 +112,7 @@ export default async function handler(req, res) {
 
     const message = componentId === "recap_only"
       ? "📋 Recap en cours...durée ≈ 30 secondes"
-      : "🎯 Analyse + génération en cours...durée ≈ 45 secondes";
+      : "⏭️ Analyse + génération en cours...durée ≈ 45 secondes";
 
     return res.status(200).json({
       canvas: {
