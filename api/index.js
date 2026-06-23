@@ -25,7 +25,7 @@ export default async function handler(req, res) {
             {
               type: "button",
               id: "full_action",
-              label: "🎯 Recap + Prochaine action",
+              label: "⏭️ Recap + Prochaine action",
               style: "primary",
               action: { type: "submit" }
             }
