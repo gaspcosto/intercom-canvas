@@ -1,27 +1,6 @@
 export default async function handler(req, res) {
-  const isSubmit = req.body?.component_id === "generate_button";
-
-  // Chargement initial → bouton
-  if (!isSubmit) {
-    return res.status(200).json({
-      canvas: {
-        content: {
-          components: [{
-            type: "button",
-            id: "generate_button",
-            label: "Reco prochaine action",
-            style: "primary",
-            action: { type: "submit" }
-          }]
-        }
-      }
-    });
-  }
-
-  // Submit cliqué → on enrichit puis on forward à Make
-  const contactId = req.body?.customer?.id;
+  const componentId = req.body?.component_id;
   const token = process.env.INTERCOM_TOKEN;
-
   const intercomHeaders = {
     "Authorization": `Bearer ${token}`,
     "Accept": "application/json",
@@ -29,8 +8,37 @@ export default async function handler(req, res) {
     "Intercom-Version": "2.11"
   };
 
+  // === Chargement initial : deux boutons ===
+  if (!componentId) {
+    return res.status(200).json({
+      canvas: {
+        content: {
+          components: [
+            {
+              type: "button",
+              id: "recap_only",
+              label: "📋 Recap historique",
+              style: "secondary",
+              action: { type: "submit" }
+            },
+            { type: "spacer", size: "s" },
+            {
+              type: "button",
+              id: "full_action",
+              label: "🎯 Recap + Prochaine action",
+              style: "primary",
+              action: { type: "submit" }
+            }
+          ]
+        }
+      }
+    });
+  }
+
+  // === Submit : on enrichit puis on forward ===
+  const contactId = req.body?.customer?.id;
+
   try {
-    // 1. Cherche les 10 dernières conversations du contact
     const searchRes = await fetch("https://api.intercom.io/conversations/search", {
       method: "POST",
       headers: intercomHeaders,
@@ -43,7 +51,6 @@ export default async function handler(req, res) {
     const searchData = await searchRes.json();
     const conversations = searchData.conversations || [];
 
-    // 2. Récupère les détails complets en parallèle
     const fullConvs = await Promise.all(
       conversations.map(c =>
         fetch(`https://api.intercom.io/conversations/${c.id}`, {
@@ -52,55 +59,65 @@ export default async function handler(req, res) {
       )
     );
 
-    // 3. Construit un JSON propre
+    const stripHtml = (s) => (s || "")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+
     const cleanData = fullConvs.map(c => ({
       id: c.id,
       created_at: c.created_at,
+      tags: (c.tags?.tags || []).map(t => t.name),
       source: {
         type: c.source?.type,
-        subject: c.source?.subject,
-        body: c.source?.body,
+        subject: stripHtml(c.source?.subject),
+        body: stripHtml(c.source?.body),
         author: c.source?.author?.name
       },
       parts: (c.conversation_parts?.conversation_parts || [])
-  .filter(p => {
-    // On garde uniquement les parts avec un body utile
-    if (!p.body || p.body.trim() === "") return false;
-    if (p.redacted === true) return false;
-    // Filtre les messages supprimés (FR + EN, avec ou sans HTML)
-    const cleanBody = p.body.replace(/<[^>]*>/g, "").trim().toLowerCase();
-    if (cleanBody.includes("ce message a été supprimé")) return false;
-    if (cleanBody.includes("this note was deleted")) return false;
-    if (cleanBody.includes("this message was deleted")) return false;
-    return true;
-  })
-  .map(p => ({
-    type: p.part_type,
-    author: p.author?.name,
-    body: p.body,
-    created_at: p.created_at
-  }))
+        .filter(p => {
+          if (!p.body || p.body.trim() === "") return false;
+          if (p.redacted === true) return false;
+          const clean = stripHtml(p.body).toLowerCase();
+          if (clean.includes("ce message a été supprimé")) return false;
+          if (clean.includes("this note was deleted")) return false;
+          if (clean.includes("this message was deleted")) return false;
+          return true;
+        })
+        .map(p => ({
+          type: p.part_type,
+          author: p.author?.name,
+          body: stripHtml(p.body),
+          created_at: p.created_at
+        }))
     }));
 
-    // 4. Envoie à Make
+    // Route vers Make avec le type d'action
     await fetch("https://hook.eu1.make.com/asxq5xg31x1q4bqzunwetcmj78i1ouui", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        action: componentId, // "recap_only" ou "full_action"
         contact: req.body.customer,
         current_conversation_id: req.body.conversation?.id,
         last_conversations: cleanData
       })
     });
 
+    const message = componentId === "recap_only"
+      ? "📋 Recap en cours..."
+      : "🎯 Analyse + génération en cours...";
+
     return res.status(200).json({
       canvas: {
         content: {
-          components: [{
-            type: "text",
-            text: "✅ Mail en cours de génération...",
-            style: "paragraph"
-          }]
+          components: [{ type: "text", text: message, style: "paragraph" }]
         }
       }
     });
@@ -109,11 +126,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       canvas: {
         content: {
-          components: [{
-            type: "text",
-            text: "❌ Erreur : " + err.message,
-            style: "paragraph"
-          }]
+          components: [{ type: "text", text: "❌ Erreur : " + err.message, style: "paragraph" }]
         }
       }
     });
