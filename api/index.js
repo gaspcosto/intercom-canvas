@@ -43,7 +43,7 @@ try {
       method: "POST",
       headers: intercomHeaders,
       body: JSON.stringify({
-        query: { field: "contact_ids", operator: "~", value: contactId },
+        query: { field: "contact_ids", operator: "IN", value: contactId },
         pagination: { per_page: 10 },
         sort: { field: "created_at", order: "desc" }
       })
