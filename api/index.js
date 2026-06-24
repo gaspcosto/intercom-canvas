@@ -38,69 +38,25 @@ export default async function handler(req, res) {
   // === Submit : on enrichit puis on forward ===
   const contactId = req.body?.customer?.id;
 
-try {
-    // === DIAGNOSTIC 1: Vérifier que le contact existe ===
-    const contactRes = await fetch(`https://api.intercom.io/contacts/${contactId}`, {
-      headers: intercomHeaders
-    });
-    const contactData = await contactRes.json();
-    console.log("DIAG 1 - Contact lookup:", {
-      status: contactRes.status,
-      id_returned: contactData.id,
-      name: contactData.name,
-      email: contactData.email,
-      role: contactData.role,
-      type: contactData.type,
-      errors: contactData.errors || null
-    });
-
-    // === DIAGNOSTIC 2: Search par contact_ids avec ~ ===
-    const search1 = await fetch("https://api.intercom.io/conversations/search", {
-      method: "POST",
-      headers: intercomHeaders,
-      body: JSON.stringify({
-        query: { field: "contact_ids", operator: "~", value: contactId },
-        pagination: { per_page: 10 }
-      })
-    });
-    const search1Data = await search1.json();
-    console.log("DIAG 2 - contact_ids ~ :", {
-      status: search1.status,
-      total_count: search1Data.total_count
-    });
-
-    // === DIAGNOSTIC 3: Search par contact_ids avec IN (array) ===
-    const search2 = await fetch("https://api.intercom.io/conversations/search", {
+  try {
+    const searchRes = await fetch("https://api.intercom.io/conversations/search", {
       method: "POST",
       headers: intercomHeaders,
       body: JSON.stringify({
         query: { field: "contact_ids", operator: "IN", value: [contactId] },
-        pagination: { per_page: 10 }
+        pagination: { per_page: 10 },
+        sort: { field: "created_at", order: "desc" }
       })
     });
-    const search2Data = await search2.json();
-    console.log("DIAG 3 - contact_ids IN [array]:", {
-      status: search2.status,
-      total_count: search2Data.total_count
-    });
+    const searchData = await searchRes.json();
+    const conversations = searchData.conversations || [];
 
-    // === DIAGNOSTIC 4: Search par source.author.id ===
-    const search3 = await fetch("https://api.intercom.io/conversations/search", {
-      method: "POST",
-      headers: intercomHeaders,
-      body: JSON.stringify({
-        query: { field: "source.author.id", operator: "=", value: contactId },
-        pagination: { per_page: 10 }
-      })
+    console.log("Intercom search:", {
+      status: searchRes.status,
+      total_count: searchData.total_count,
+      contact_id: contactId,
+      conversations_found: conversations.length
     });
-    const search3Data = await search3.json();
-    console.log("DIAG 4 - source.author.id =:", {
-      status: search3.status,
-      total_count: search3Data.total_count
-    });
-
-    // Pour ne pas casser le flow, on continue avec la meilleure source
-    const conversations = search2Data.conversations || search1Data.conversations || search3Data.conversations || [];
 
     const fullConvs = await Promise.all(
       conversations.map(c =>
