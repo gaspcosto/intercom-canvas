@@ -38,18 +38,27 @@ export default async function handler(req, res) {
   // === Submit : on enrichit puis on forward ===
   const contactId = req.body?.customer?.id;
 
-  try {
+try {
     const searchRes = await fetch("https://api.intercom.io/conversations/search", {
       method: "POST",
       headers: intercomHeaders,
       body: JSON.stringify({
-        query: { field: "contact_ids", operator: "=", value: contactId },
+        query: { field: "contact_ids", operator: "~", value: contactId },
         pagination: { per_page: 10 },
         sort: { field: "created_at", order: "desc" }
       })
     });
     const searchData = await searchRes.json();
     const conversations = searchData.conversations || [];
+
+    // === Logging diagnostic ===
+    console.log("Intercom search response:", {
+      status: searchRes.status,
+      total_count: searchData.total_count,
+      contact_id_used: contactId,
+      conversations_found: conversations.length,
+      errors: searchData.errors || null
+    });
 
     const fullConvs = await Promise.all(
       conversations.map(c =>
